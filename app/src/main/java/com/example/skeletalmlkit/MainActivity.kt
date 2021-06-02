@@ -4,9 +4,11 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ContentValues.TAG
 import android.content.pm.PackageManager
+import android.media.Image
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.util.Size
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
@@ -21,6 +23,8 @@ import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.*
 import java.util.concurrent.Executors
 import androidx.camera.core.*
+import com.google.android.gms.tasks.Task
+import com.google.mlkit.vision.pose.Pose
 import kotlinx.android.synthetic.main.activity_main.*
 import java.io.File
 import java.nio.ByteBuffer
@@ -92,10 +96,21 @@ class MainActivity : AppCompatActivity() {
             try {
                 // Unbind use cases before rebinding
                 cameraProvider.unbindAll()
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setTargetResolution(Size(1280, 720))
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+
+                imageAnalysis.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { image ->
+                    val rotationDegrees = image.imageInfo.rotationDegrees
+                    // insert your code here.
+                    Log.d("TEST", rotationDegrees.toString())
+                    YourImageAnalyzer().analyze(image)
+                })
 
                 // Bind use cases to camera
                 cameraProvider.bindToLifecycle(
-                        this, cameraSelector, preview)
+                        this, cameraSelector, imageAnalysis, preview)
 
             } catch(exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
@@ -119,5 +134,35 @@ class MainActivity : AppCompatActivity() {
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+    }
+}
+
+
+private class YourImageAnalyzer : ImageAnalysis.Analyzer {
+
+    val options = PoseDetectorOptions.Builder()
+        .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+        .build()
+    val poseDetector = PoseDetection.getClient(options)
+    @SuppressLint("UnsafeOptInUsageError")
+    override fun analyze(imageProxy: ImageProxy) {
+        val mediaImage = imageProxy.image
+        if (mediaImage != null) {
+            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+            poseDetector.process(image)
+                .addOnSuccessListener {
+                    val allPoseLandmarks = it.getAllPoseLandmarks()
+                    Log.d("DETECTED", allPoseLandmarks.toString())
+                    imageProxy.close()
+                }
+                .addOnFailureListener() {
+                    e -> Log.d("ERROR", e.toString() )
+                    imageProxy.close()
+                }
+                .addOnCompleteListener {
+                    result -> mediaImage.close()
+                    imageProxy.close()
+                }
+        }
     }
 }
