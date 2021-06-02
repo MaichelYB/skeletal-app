@@ -149,6 +149,7 @@ private class YourImageAnalyzer : ImageAnalysis.Analyzer {
         val mediaImage = imageProxy.image
         if (mediaImage != null) {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+//            disesuaikan
             poseDetector.process(image)
                 .addOnSuccessListener {
                     val allPoseLandmarks = it.getAllPoseLandmarks()
